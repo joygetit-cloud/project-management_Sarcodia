@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>海洋資源開發專題 工作進度回報</title>
+<script src="react.js"></script>
+<script src="react-dom.js"></script>
+<script src="babel.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#040b12;color:#cce8f8;font-family:system-ui,sans-serif;min-height:100vh}
+@keyframes fall{0%{transform:translateY(0) rotate(0deg)}100%{transform:translateY(110vh) rotate(400deg)}}
+@keyframes popIn{0%{transform:scale(.5);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+@keyframes shimmer{0%,100%{opacity:.6}50%{opacity:1}}
+button{cursor:pointer;transition:all .18s;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:hover{filter:brightness(1.15)}
+button:active{transform:scale(.96)}
+::-webkit-scrollbar{width:4px;background:#040b12}
+::-webkit-scrollbar-thumb{background:#1e3a5a;border-radius:2px}
+textarea,input,select{outline:none}
+input[type="date"]{color-scheme:light}
+.arc-row{opacity:.5}
+.done-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;
+  background:#003d1a;border:1px solid #00ffaa44;color:#00ffaa;padding:2px 7px;border-radius:10px}
+
+/* ── Mobile Responsive ── */
+.hdr-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.hdr-btns{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.tabs{display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:1px}
+.tabs::-webkit-scrollbar{display:none}
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px}
+.card-hd{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer}
+.card-ft{display:flex;gap:8px;margin-top:12px;justify-content:flex-end;flex-wrap:wrap}
+.card-ft button{min-height:38px}
+.item-meta{display:flex;gap:10px;padding-left:25px;font-size:11px;color:#4a7a9a;flex-wrap:wrap}
+.edit-r2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.modal-box{background:#0a1520;border-radius:16px;padding:22px;
+  width:min(600px,96vw);max-height:88vh;overflow-y:auto;animation:popIn .3s ease}
+
+@media(max-width:600px){
+  /* prevent iOS input zoom */
+  input,select,textarea{font-size:16px!important}
+  /* header stacks below ~480px */
+  .hdr-row{flex-wrap:wrap;gap:8px}
+  .hdr-btns{margin-left:auto}
+  /* tabs always scrollable, smaller text */
+  .tabs button{font-size:12px!important;padding:7px 14px!important;white-space:nowrap}
+  /* stat grid single col */
+  .stat-grid{grid-template-columns:1fr!important}
+  /* card header tighter */
+  .card-hd{gap:8px;padding:10px 12px}
+  /* card footer buttons expand */
+  .card-ft{justify-content:stretch}
+  .card-ft button{flex:1;min-width:0;font-size:12px!important;padding:8px 6px!important}
+  /* ring hide on very small */
+  .ring-wrap{display:none!important}
+  /* modal full-width sheet */
+  .modal-box{width:100vw!important;max-width:100vw!important;max-height:92vh!important;
+    border-radius:16px 16px 0 0!important;margin:auto 0 0 0!important}
+  .modal-overlay{align-items:flex-end!important;padding:0!important}
+  /* edit row 2 smaller inputs */
+  .edit-r2 input,.edit-r2 select{min-width:0;flex:1}
+}
+@media(max-width:360px){
+  .card-hd{padding:8px 10px}
+  .hdr-row .title-txt{font-size:15px!important}
+  .hdr-row .sub-txt{font-size:10px!important}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState, useEffect, useRef} = React;
+
+/* ── Constants ── */
+const MDS = ['😴','😐','🙂','😊','🤩'];
+const MDB = ['疲憊','普通','還好','不錯','超棒'];
+const FC = [
+  ['再加把勁 💪','繼續努力 🌱','有在動就好 😅'],
+  ['中規中矩 📏','穩定輸出 🔋','不錯不錯 👍'],
+  ['表現亮眼 ✨','超出預期 🚀','優秀員工 🏅'],
+  ['完美表現 🎯','神級操作 ⚡','公司之光 🌟'],
+];
+const CATS = [
+  {k:'buy',  lb:'採購', ic:'🛒', col:'#00ffaa', bg:'#003d2e', dfW:1.0},
+  {k:'exp',  lb:'實驗', ic:'🔬', col:'#00cfff', bg:'#002a3d', dfW:1.0},
+  {k:'safe', lb:'安環', ic:'⚠️', col:'#ffd700', bg:'#2a2000', dfW:1.0},
+  {k:'rou',  lb:'例行', ic:'🔄', col:'#7a8a9a', bg:'#141c24', dfW:0.1},
+  {k:'other',lb:'其他', ic:'📌', col:'#b44dff', bg:'#1a0a2a', dfW:1.0},
+];
+const DEFAULT_PARAMS = {wC:40, wD:5, wI:30, wO:25};
+const GAS_KEY   = 'wps_gas_url';
+const ARC_KEY   = 'wps_arc_url';
+const ARC_DONE  = 'wps_arc_done';
+const SHEET_KEY     = 'wps_sheet_url';      // 項目歸檔試算表瀏覽網址
+const ARC_SHEET_KEY = 'wps_arc_sheet_url';  // 週報歸檔試算表瀏覽網址
+const PRM_KEY   = 'wps_params';
+const WEEK_LB   = '114年第15週（4/7-4/11）';
+const mkId = () => Math.random().toString(36).slice(2,8);
+
+/* ── Weekly window helpers ── */
+function getWeekKey() {
+  var d = new Date();
+  var thu = new Date(d); thu.setDate(d.getDate() + (4 - (d.getDay()||7)));
+  var yr = thu.getFullYear();
+  var jan1 = new Date(yr,0,1);
+  var wk = Math.ceil(((thu - jan1)/86400000 + jan1.getDay() + 1)/7);
+  return yr+'-W'+String(wk).padStart(2,'0');
+}
+function isInFillWindow() {
+  var d   = new Date();
+  var day = d.getDay();    // 0=Sun, 4=Thu
+  var h   = d.getHours();
+  var min = d.getMinutes();
+  if (day === 0 && h < 23) return false;                              // Sun before 23:00
+  if (day === 5 || day === 6) return false;                            // Fri, Sat = locked
+  if (day === 4 && (h > 23 || (h === 23 && min >= 30))) return false;  // Thu after 23:30
+  return true;
+}
+function nextOpenMs() {
+  var d = new Date();
+  var day = d.getDay();
+  var daysUntil = day === 0 ? 7 : (7 - day);
+  var next = new Date(d);
+  next.setDate(d.getDate() + daysUntil);
+  next.setHours(23,0,0,0);
+  return next - d;
+}
+function nextCloseMs() {
+  // ms until Thursday 23:30 (the next deadline)
+  var d = new Date();
+  var day = d.getDay();
+  var daysUntilThu = (4 - day + 7) % 7;
+  if (daysUntilThu === 0) {
+    var h = d.getHours(); var min = d.getMinutes();
+    if (h > 23 || (h === 23 && min >= 30)) daysUntilThu = 7; // already past, next Thu
+  }
+  var next = new Date(d);
+  next.setDate(next.getDate() + daysUntilThu);
+  next.setHours(23,30,0,0);
+  return next - d;
+}
+function fmtCountdown(ms) {
+  var s = Math.floor(ms/1000);
+  var h = Math.floor(s/3600); s -= h*3600;
+  var m = Math.floor(s/60);   s -= m*60;
+  return (h?h+'h ':'') + m + 'm ' + s + 's';
+}
+
+function catInfo(it) {
+  if (!it.cat || it.cat === 'other') {
+    const tx = (it.catTx && it.catTx.trim()) ? it.catTx.trim() : '其他';
+    return {lb:tx, ic:'📌', col:'#b44dff', bg:'#1a0a2a', dfW:1.0};
+  }
+  const found = CATS.filter(function(c) { return c.k === it.cat; });
+  return found.length ? found[0] : {lb:'其他', ic:'📌', col:'#b44dff', bg:'#1a0a2a', dfW:1.0};
+}
+function stars(df) {
+  const n = df || 3;
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+function starCol(df) {
+  return df >= 5 ? '#ff4da6' : df >= 4 ? '#ff9500' : df >= 3 ? '#ffd700' : df >= 2 ? '#00cfff' : '#00ffaa';
+}
+function fmtNow() {
+  return new Date().toLocaleString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function fmtDate(s) {
+  if (!s) return '';
+  if (s.includes('-')) { var p=s.split('-'); return p[1]+'/'+p[2]; }
+  return s;
+}
+function toDateVal(s) {
+  if (!s) return '';
+  if (s.includes('-')) return s;
+  var yr = new Date().getFullYear();
+  var p = s.split('/');
+  if (p.length===2) return yr+'-'+p[0]+'-'+p[1];
+  return '';
+}
+async function sendToSheet(url, payload) {
+  await fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)});
+}
+async function archiveWeeklyReport(members, arcUrl, weekKey) {
+  if (!arcUrl) return;
+  var arcAt = fmtNow();
+  var rows = members.map(function(m){
+    var items = (m.items||[]).filter(function(it){ return !it.arc; });
+    var total = items.length;
+    var done  = items.filter(function(it){ return it.cp===100; }).length;
+    var avgDf = total
+      ? (items.reduce(function(a,it){ return a+(it.df||3); }, 0) / total).toFixed(1)
+      : '—';
+    return sendToSheet(arcUrl, {
+      type:'weekly_archive', weekKey:weekKey, arcAt:arcAt,
+      member:m.nm, mbti:m.mbti||'—',
+      reported: m.reported===weekKey ? '✅' : '❌',
+      totalItems:total, doneCnt:done,
+      clearRate: total ? Math.round(done/total*100)+'%' : '—',
+      avgDiff:avgDf, mood:m.mood||3
+    });
+  });
+  await Promise.allSettled(rows);
+}
+function loadParams() {
+  try { const p = JSON.parse(localStorage.getItem(PRM_KEY)); return p || DEFAULT_PARAMS; }
+  catch(e) { return DEFAULT_PARAMS; }
+}
+
+/* ── Group Scoring ── */
+function calcGroupScores(members, params) {
+  const p = params;
+  const active = members.filter(function(m) { return m.items && m.items.length > 0; });
+  const n = active.length || 1;
+  const gCp = active.reduce(function(a,m){
+    return a + m.items.reduce(function(s,it){return s+it.cp;},0)/m.items.length;
+  },0)/n;
+  const gDf = active.reduce(function(a,m){
+    return a + m.items.reduce(function(s,it){return s+(it.df||3);},0)/m.items.length;
+  },0)/n;
+  const gCt = active.reduce(function(a,m){return a+m.items.length;},0)/n;
+  const result = {};
+  members.forEach(function(m) {
+    if (!m.items || !m.items.length) { result[m.id] = 5; return; }
+    const mCp = m.items.reduce(function(a,it){return a+it.cp;},0)/m.items.length;
+    const mDf = m.items.reduce(function(a,it){
+      const w = catInfo(it).dfW;
+      return a + (it.df||3) * w;
+    },0)/m.items.length;
+    const mCt = m.items.length;
+    const cpS = Math.max(0, Math.min(10, 5 + (mCp - gCp)/10));
+    const dfS = Math.max(0, Math.min(10, 5 + (mDf - gDf)*1.5));
+    const qS  = Math.max(0, Math.min(10, 5 + (mCt - gCt)));
+    const doneRatio = m.items.filter(function(it){return it.cp===100;}).length / m.items.length;
+    const tS  = Math.max(0, Math.min(10, doneRatio * 10 + 3));
+    const moodBonus = m.mood >= 4 ? 0.6 : m.mood >= 3 ? 0.3 : 0;
+    const raw = (cpS*p.wC + dfS*p.wD + qS*p.wI + tS*p.wO)/100 + moodBonus;
+    result[m.id] = Math.max(0, Math.min(10, Math.round(raw*10)/10));
+  });
+  return result;
+}
+function getFinal(m, baseScores) {
+  const base = baseScores[m.id] !== undefined ? baseScores[m.id] : 5;
+  return Math.max(0, Math.min(10, Math.round((base+(m.adj||0))*10)/10));
+}
+function scCol(sc) {
+  return sc>=8?'#ffd700':sc>=6?'#00ffaa':sc>=4?'#00cfff':'#ff9500';
+}
+
+/* ── MBTI Data ── */
+const MBTI_Q = [
+  {q:'在人多的聚會後，你通常感到…', a:['充滿活力！','有點疲憊需要獨處'], dim:'EI'},
+  {q:'做決定時你更傾向於…', a:['依據邏輯與事實','依據感受與價值觀'], dim:'TF'},
+  {q:'你更喜歡…', a:['有計畫、按步驟進行','隨機應變、保持彈性'], dim:'JP'},
+  {q:'你更容易注意到…', a:['具體的細節與現實','概念、模式與可能性'], dim:'SN'},
+];
+const MBTI_MOTIV = {
+  INTJ:['策略家的直覺從不說謊，繼續用全局眼光推進！','計畫越精密，結果越驚豔，你做到了。'],
+  INTP:['思維的深度就是你的超能力，保持探索！','每一個問題都是新大陸，你的好奇心無可替代。'],
+  ENTJ:['領導力天生，目標明確，全力衝刺！','效率與遠見並存，這週你又證明了自己。'],
+  ENTP:['打破常規是你的本能，繼續創新突破！','腦力激盪的王者，這週靈感又爆發了嗎？'],
+  INFJ:['你的洞察力是團隊的燈塔，繼續照亮前路！','深思熟慮的力量正在靜靜改變一切。'],
+  INFP:['理想與熱情是你最強的引擎，繼續燃燒！','每份用心都會在未來某天開花結果。'],
+  ENFJ:['你的熱情感染每個人，繼續帶領大家前進！','給予別人力量的同時，別忘了也給自己掌聲。'],
+  ENFP:['能量滿滿的你，今天又點燃了多少可能性？','創意無限，熱情無邊，你就是團隊的太陽！'],
+  ISTJ:['可靠是你最閃亮的徽章，細節決定成敗。','穩紮穩打，每一步都是堅實的基礎。'],
+  ISFJ:['默默付出的你，是團隊最溫暖的後盾。','你的細心與關懷，讓整個環境更好了一點。'],
+  ESTJ:['執行力是你的招牌，目標達成指日可待！','組織與效率的典範，這週又完成了漂亮的任務。'],
+  ESFJ:['你的溫暖讓團隊更有凝聚力，繼續發光！','關心別人的同時，你自己也做得很好。'],
+  ISTP:['冷靜分析、精準行動，是你的招牌風格。','工具在手，問題就不是問題，繼續高效！'],
+  ISFP:['用心感受每一刻，你的投入讓成果更有溫度。','不張揚但堅定，低調是你最有力的風格。'],
+  ESTP:['行動力爆棚，邊做邊學是你最強的模式！','現場反應第一名，繼續展現你的爆發力！'],
+  ESFP:['你的活力讓工作變得有趣，繼續散播正能量！','熱情與行動力並進，今天又精彩了！'],
+};
+function getMbtiMotiv(mbti) {
+  const arr = MBTI_MOTIV[mbti] || ['繼續加油！每一步都是進步！','你的努力大家都看見了，繼續前進！'];
+  return arr[Math.floor(Math.random()*arr.length)];
+}
+
+/* ── Seed Data ── */
+const INIT = [
+  {id:'m1', nm:'睦驊', col:'#00d4ff', mood:3, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'', reported:'',
+    items:[
+      {id:'i1', tx:'蝦池水質監測與記錄', cp:75, df:3, dd:'04/11', eta:'本週四', cat:'exp', catTx:'', advice:''},
+      {id:'i2', tx:'實驗耗材申購', cp:50, df:2, dd:'04/12', eta:'本週五', cat:'buy', catTx:'', advice:''},
+    ]},
+  {id:'m2', nm:'材楙', col:'#39ff14', mood:2, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[
+      {id:'i3', tx:'溶氧儀校正實驗', cp:50, df:4, dd:'04/14', eta:'下週一', cat:'exp', catTx:'', advice:''},
+      {id:'i4', tx:'設備安全檢查', cp:100, df:2, dd:'04/10', eta:'已完成', cat:'safe', catTx:'', advice:''},
+    ]},
+  {id:'m3', nm:'建彰', col:'#ff9500', mood:4, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[
+      {id:'i5', tx:'飼料採購比價作業', cp:75, df:2, dd:'04/11', eta:'本週五', cat:'buy', catTx:'', advice:''},
+      {id:'i6', tx:'工安教育訓練規劃', cp:25, df:3, dd:'04/15', eta:'下週二', cat:'safe', catTx:'', advice:''},
+    ]},
+  {id:'m4', nm:'卉欣', col:'#ff4da6', mood:3, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[
+      {id:'i7', tx:'月報表彙整', cp:100, df:2, dd:'04/10', eta:'已完成', cat:'other', catTx:'行政', advice:''},
+      {id:'i8', tx:'藻類培養實驗', cp:50, df:4, dd:'04/14', eta:'本週五', cat:'exp', catTx:'', advice:''},
+    ]},
+  {id:'m5', nm:'凱勛', col:'#b44dff', mood:2, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[
+      {id:'i9', tx:'水槽清潔消毒作業', cp:75, df:2, dd:'04/11', eta:'本週四', cat:'other', catTx:'勞務', advice:''},
+      {id:'i10', tx:'廢水處理設備檢修', cp:25, df:5, dd:'04/15', eta:'下週三', cat:'safe', catTx:'', advice:''},
+    ]},
+  {id:'m6', nm:'鎮宇', col:'#00ffaa', mood:4, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[
+      {id:'i11', tx:'蝦苗密度調查', cp:100, df:3, dd:'04/10', eta:'已完成', cat:'exp', catTx:'', advice:''},
+      {id:'i12', tx:'抗生素替代品採購評估', cp:50, df:5, dd:'04/16', eta:'下週四', cat:'buy', catTx:'', advice:''},
+    ]},
+  {id:'m7', nm:'中君', col:'#ffd700', mood:3, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[
+      {id:'i13', tx:'環境影響評估報告撰寫', cp:75, df:4, dd:'04/12', eta:'本週五', cat:'safe', catTx:'', advice:''},
+      {id:'i14', tx:'試劑盤點作業', cp:50, df:2, dd:'04/11', eta:'本週四', cat:'exp', catTx:'', advice:''},
+    ]},
+  {id:'m8', nm:'姝玉', col:'#ff6ec7', mood:2, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[]},
+  {id:'m9', nm:'培景', col:'#00e5ff', mood:2, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[]},
+  {id:'m10', nm:'惠君', col:'#69ff47', mood:2, adj:0, cm:'', email:'', pwd:'', mbti:'', reported:'',
+    items:[]},
+];
+
+/* ── UI components ── */
+function Ring({p, c, s}) {
+  const sz=s||52, r=sz/2-6, ci=2*Math.PI*r;
+  return (
+    <svg width={sz} height={sz} style={{transform:'rotate(-90deg)'}}>
+      <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke="#1e2a3a" strokeWidth="5"/>
+      <circle cx={sz/2} cy={sz/2} r={r} fill="none" stroke={c||'#00d4ff'} strokeWidth="5"
+        strokeDasharray={ci} strokeDashoffset={ci-p/100*ci} style={{transition:'stroke-dashoffset .5s'}}/>
+    </svg>
+  );
+}
+function Toast({msg, ok, done}) {
+  useEffect(()=>{const t=setTimeout(done,3500);return()=>clearTimeout(t);},[]);
+  const bd = ok?'#00ffaa':'#ff4da6';
+  return (
+    <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',
+      background:ok?'#003d2e':'#3d001a',border:'1px solid '+bd,color:'#fff',
+      padding:'10px 24px',borderRadius:24,zIndex:9999,fontSize:13,fontWeight:600,
+      boxShadow:'0 0 20px '+bd+'55',whiteSpace:'nowrap',animation:'popIn .3s ease'}}>
+      {msg}
+    </div>
+  );
+}
+function Conf({on}) {
+  if (!on) return null;
+  const es=['🎉','✨','🌟','💫','🎊','⭐','🎈','🏆','🎯','💥'];
+  return (
+    <div style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none',zIndex:8888}}>
+      {es.map(function(e,i){
+        return (
+          <div key={i} style={{position:'absolute',left:(5+i*10)+'%',top:'-30px',
+            fontSize:26,animation:'fall 2.4s ease-in forwards',animationDelay:(i*.12)+'s'}}>{e}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── MBTI Quiz Modal ── */
+function MbtiM({m, onDone, onClose}) {
+  const [step, setStep] = useState(0);
+  const [ans, setAns] = useState([null,null,null,null]);
+  const [result, setResult] = useState('');
+
+  function pick(idx) {
+    const na = ans.slice(); na[step] = idx; setAns(na);
+    if (step < MBTI_Q.length - 1) {
+      setStep(step + 1);
+    } else {
+      const dims = MBTI_Q.map(function(q,i){ return {dim:q.dim, v:na[i]}; });
+      var type = '';
+      dims.forEach(function(d) {
+        if (d.dim==='EI') type += d.v===0?'E':'I';
+        if (d.dim==='SN') type += d.v===1?'N':'S';
+        if (d.dim==='TF') type += d.v===0?'T':'F';
+        if (d.dim==='JP') type += d.v===0?'J':'P';
+      });
+      setResult(type);
+    }
+  }
+
+  const q = MBTI_Q[step];
+  const mbtiCol = '#b44dff';
+
+  if (result) {
+    const motiv = getMbtiMotiv(result);
+    return (
+      <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000c',zIndex:3200,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <div className="modal-box" style={{border:'1px solid '+mbtiCol,textAlign:'center',maxWidth:'min(380px,96vw)'}}>
+          <div style={{fontSize:40,marginBottom:8}}>🧠</div>
+          <div style={{color:mbtiCol,fontWeight:800,fontSize:22,marginBottom:4}}>{result}</div>
+          <div style={{color:'#cce8f8',fontSize:13,marginBottom:12,fontWeight:600}}>
+            {m.nm} 的人格類型
+          </div>
+          <div style={{background:'#0d1a2a',border:'1px solid '+mbtiCol+'44',borderRadius:10,
+            padding:'12px 16px',marginBottom:20,color:'#d0e8ff',fontSize:14,lineHeight:1.8}}>
+            💬 {motiv}
+          </div>
+          <button onClick={function(){onDone(result);}}
+            style={{width:'100%',background:'#1a0a2a',border:'1px solid '+mbtiCol,color:mbtiCol,
+              borderRadius:10,padding:'12px',fontWeight:700,fontSize:15}}>
+            確認，開始填報 ✓
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000c',zIndex:3200,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid '+mbtiCol,maxWidth:'min(420px,96vw)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+          <div style={{color:mbtiCol,fontWeight:700,fontSize:15}}>🧠 人格分析 — {m.nm}</div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#88a',fontSize:22}}>✕</button>
+        </div>
+        {/* progress */}
+        <div style={{display:'flex',gap:4,marginBottom:20}}>
+          {MBTI_Q.map(function(_,i){
+            return (
+              <div key={i} style={{flex:1,height:4,borderRadius:2,
+                background:i<=step?(i<step?mbtiCol:mbtiCol+'99'):'#1e2a3a'}}/>
+            );
+          })}
+        </div>
+        <div style={{color:'#cce8f8',fontSize:15,fontWeight:600,marginBottom:20,lineHeight:1.6,textAlign:'center'}}>
+          {q.q}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {q.a.map(function(opt,idx){
+            return (
+              <button key={idx} onClick={function(){pick(idx);}}
+                style={{background:'#0d1820',border:'1px solid '+mbtiCol+'66',color:'#cce8f8',
+                  borderRadius:10,padding:'14px 16px',fontSize:14,textAlign:'left',
+                  transition:'all .15s'}}>
+                {idx===0?'🅰 ':'🅱 '}{opt}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{color:'#4a6a8a',fontSize:11,textAlign:'center',marginTop:14}}>
+          第 {step+1} / {MBTI_Q.length} 題
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Member Auth Modal ── */
+function MemberAuthM({m, onAuth, onClose}) {
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState(false);
+  function tryAuth() {
+    if (pw === m.pwd) { setErr(false); onAuth(); }
+    else { setErr(true); setPw(''); }
+  }
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000b',zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid '+m.col,maxWidth:'min(340px,96vw)'}}>
+        <div style={{color:m.col,fontWeight:700,fontSize:16,marginBottom:6}}>🔐 {m.nm} — 身份驗證</div>
+        <div style={{color:'#4a7a9a',fontSize:12,marginBottom:14}}>請輸入您的個人密碼以進入填報</div>
+        <input type="password" value={pw}
+          onChange={function(e){setPw(e.target.value);setErr(false);}}
+          onKeyDown={function(e){if(e.key==='Enter')tryAuth();}}
+          placeholder="輸入密碼" autoFocus
+          style={{width:'100%',background:'#0d1820',border:'1px solid '+(err?'#ff4da6':'#1e3a4a'),
+            color:'#cce8f8',borderRadius:8,padding:'10px',fontSize:14,boxSizing:'border-box',marginBottom:6}}/>
+        {err && <div style={{color:'#ff4da6',fontSize:12,marginBottom:8}}>❌ 密碼錯誤，請再試一次</div>}
+        <div style={{display:'flex',gap:8,marginTop:8}}>
+          <button onClick={onClose}
+            style={{flex:1,background:'#0d1820',border:'1px solid #1e3a4a',
+              color:'#7a9ab8',borderRadius:8,padding:'9px',fontSize:13}}>取消</button>
+          <button onClick={tryAuth}
+            style={{flex:1,background:'#0d2030',border:'1px solid '+m.col,
+              color:m.col,borderRadius:8,padding:'9px',fontWeight:700,fontSize:13}}>確認</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Settings Modal (GAS) ── */
+function SettingsM({gasUrl, arcUrl, sheetUrl, arcSheetUrl, onSave, onClose}) {
+  const [url,    setUrl]    = useState(gasUrl||'');
+  const [arcU,   setArcU]   = useState(arcUrl||'');
+  const [shtU,   setShtU]   = useState(sheetUrl||'');
+  const [arcShtU,setArcShtU]= useState(arcSheetUrl||'');
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000b',zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid #00cfff',maxHeight:'85vh'}}>
+        <div style={{color:'#00cfff',fontWeight:700,fontSize:16,marginBottom:6}}>⚙️ Google Sheets 連接</div>
+
+        {/* 項目歸檔 */}
+        <div style={{color:'#4a7a9a',fontSize:12,lineHeight:1.8,marginBottom:8}}>
+          📁 項目歸檔 Apps Script（完成單一工作項目時送出）：
+        </div>
+        <div style={{background:'#060e18',border:'1px solid #1e3a5a',borderRadius:8,padding:'10px 14px',
+          marginBottom:10,fontSize:11,color:'#4a9ab8',fontFamily:'monospace',lineHeight:1.8,overflowX:'auto',whiteSpace:'pre'}}>
+{`function doPost(e) {
+  var s = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var d = JSON.parse(e.postData.contents);
+  s.appendRow([d.arcAt,d.member,d.category,d.task,d.progress,d.difficulty,d.deadline]);
+  return ContentService.createTextOutput(JSON.stringify({ok:true}))
+    .setMimeType(ContentService.MimeType.JSON);
+}`}
+        </div>
+        <div style={{color:'#7a9ab8',fontSize:12,marginBottom:6}}>項目歸檔 Web App 網址</div>
+        <input value={url} onChange={function(e){setUrl(e.target.value);}}
+          placeholder="https://script.google.com/macros/s/..."
+          style={{width:'100%',background:'#0d1820',border:'1px solid #1e3a4a',color:'#cce8f8',
+            borderRadius:8,padding:'10px',fontSize:13,boxSizing:'border-box',marginBottom:20}}/>
+
+        {/* 週報歸檔 */}
+        <div style={{color:'#ffaa44',fontSize:12,lineHeight:1.8,marginBottom:8}}>
+          📤 週報歸檔 Apps Script（每週四 23:30 截止後自動送出全員摘要）：
+        </div>
+        <div style={{background:'#060e18',border:'1px solid #3a2a10',borderRadius:8,padding:'10px 14px',
+          marginBottom:10,fontSize:11,color:'#c89a60',fontFamily:'monospace',lineHeight:1.8,overflowX:'auto',whiteSpace:'pre'}}>
+{`function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var s  = ss.getSheetByName('週報') || ss.insertSheet('週報');
+  var d  = JSON.parse(e.postData.contents);
+  if (d.type === 'weekly_archive') {
+    s.appendRow([d.weekKey,d.arcAt,d.member,d.mbti,d.reported,
+                 d.totalItems,d.doneCnt,d.clearRate,d.avgDiff,d.mood]);
+  }
+  return ContentService.createTextOutput(JSON.stringify({ok:true}))
+    .setMimeType(ContentService.MimeType.JSON);
+}`}
+        </div>
+        <div style={{color:'#ffaa44',fontSize:12,marginBottom:6}}>週報歸檔 Web App 網址（GAS 執行網址）</div>
+        <input value={arcU} onChange={function(e){setArcU(e.target.value);}}
+          placeholder="https://script.google.com/macros/s/..."
+          style={{width:'100%',background:'#0d1820',border:'1px solid #3a2a10',color:'#cce8f8',
+            borderRadius:8,padding:'10px',fontSize:13,boxSizing:'border-box',marginBottom:8}}/>
+        <div style={{color:'#ffaa44',fontSize:12,marginBottom:6}}>週報歸檔試算表網址（「✅ 已完成並歸檔」按鈕開啟）</div>
+        <input value={arcShtU} onChange={function(e){setArcShtU(e.target.value);}}
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          style={{width:'100%',background:'#0d1820',border:'1px solid #3a2a10',color:'#cce8f8',
+            borderRadius:8,padding:'10px',fontSize:13,boxSizing:'border-box',marginBottom:16}}/>
+
+        {/* 項目歸檔試算表瀏覽網址 */}
+        <div style={{borderTop:'1px solid #1e3a5a',paddingTop:14,marginBottom:14}}>
+          <div style={{color:'#00cfff',fontSize:12,fontWeight:700,marginBottom:6}}>
+            🔗 項目歸檔試算表網址（「每週工作紀錄」按鈕開啟）
+          </div>
+          <input value={shtU} onChange={function(e){setShtU(e.target.value);}}
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            style={{width:'100%',background:'#0d1820',border:'1px solid #1e4a6a',color:'#cce8f8',
+              borderRadius:8,padding:'10px',fontSize:13,boxSizing:'border-box'}}/>
+        </div>
+
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={onClose} style={{background:'#0d1820',border:'1px solid #1e3a4a',
+            color:'#7a9ab8',borderRadius:8,padding:'8px 18px',fontSize:13}}>取消</button>
+          <button onClick={function(){onSave(url.trim(), arcU.trim(), shtU.trim(), arcShtU.trim());}}
+            style={{background:'#0d3050',border:'1px solid #00cfff',color:'#00cfff',
+              borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13}}>儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Score Params Modal ── */
+function ScoreParamsM({params, onSave, onClose}) {
+  const [wC, setWC] = useState(params.wC);
+  const [wD, setWD] = useState(params.wD);
+  const [wI, setWI] = useState(params.wI);
+  const [wO, setWO] = useState(params.wO);
+  const total = wC + wD + wI + wO;
+  const ok = total === 100;
+  function save() {
+    if (!ok) return;
+    onSave({wC:wC, wD:wD, wI:wI, wO:wO});
+  }
+  function row(lb, val, setVal) {
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+        <span style={{color:'#7a9ab8',fontSize:13,minWidth:90}}>{lb}</span>
+        <input type="range" min={0} max={100} value={val}
+          onChange={function(e){setVal(parseInt(e.target.value));}}
+          style={{flex:1,accentColor:'#00d4ff'}}/>
+        <span style={{color:'#00d4ff',fontWeight:700,minWidth:36,textAlign:'right'}}>{val}%</span>
+      </div>
+    );
+  }
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000b',zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid #ffd700',maxWidth:'min(400px,96vw)'}}>
+        <div style={{color:'#ffd700',fontWeight:700,fontSize:15,marginBottom:16}}>⚙️ 評分參數設定</div>
+        {row('📊 完成率', wC, setWC)}
+        {row('⭐ 難度', wD, setWD)}
+        {row('📦 任務量', wI, setWI)}
+        {row('⏱ 準時率', wO, setWO)}
+        <div style={{fontSize:11,color:'#7a9ab8',background:'#0d1820',borderRadius:6,
+          padding:'7px 10px',marginBottom:14,lineHeight:1.7}}>
+          😊 心情加分（固定）：不錯 +0.3 分 ／ 超棒 +0.6 分
+        </div>
+        <div style={{textAlign:'center',fontSize:13,marginBottom:16,
+          color:ok?'#00ffaa':'#ff4da6',fontWeight:600}}>
+          合計：{total}% {ok?'✓ 可儲存':'（需等於100%）'}
+        </div>
+        <div style={{fontSize:11,color:'#4a6a8a',marginBottom:16,lineHeight:1.7}}>
+          各項評分依全組相對表現計算（高於均值加分，低於均值扣分），最終合併為0-10分。
+        </div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={function(){onSave(DEFAULT_PARAMS);}}
+            style={{background:'#0d1820',border:'1px solid #1e3a4a',color:'#7a9ab8',
+              borderRadius:8,padding:'8px 14px',fontSize:13}}>還原預設</button>
+          <button onClick={onClose}
+            style={{background:'#0d1820',border:'1px solid #1e3a4a',color:'#7a9ab8',
+              borderRadius:8,padding:'8px 14px',fontSize:13}}>取消</button>
+          <button onClick={save} disabled={!ok}
+            style={{background:ok?'#1a2010':'#111',border:'1px solid '+(ok?'#ffd700':'#333'),
+              color:ok?'#ffd700':'#444',borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13}}>儲存</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Score Modal ── */
+function ScoreM({m, baseScore, onSave, onClose}) {
+  const [adj, setAdj] = useState(m.adj||0);
+  const [cm, setCm] = useState(m.cm||'');
+  const sc = Math.max(0, Math.min(10, Math.round((baseScore+adj)*10)/10));
+  const idx = sc>=8?3:sc>=6?2:sc>=4?1:0;
+  function adjBy(d) {
+    setAdj(function(a){ return Math.max(-3,Math.min(3,Math.round((a+d)*10)/10)); });
+  }
+  function pickCmt() { const arr=FC[idx]; setCm(arr[Math.floor(Math.random()*arr.length)]); }
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000b',zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid #ffd700',maxWidth:'min(400px,96vw)'}}>
+        <div style={{color:'#ffd700',fontWeight:700,fontSize:15,marginBottom:16}}>⭐ 評分 — {m.nm}</div>
+        <div style={{textAlign:'center',marginBottom:16}}>
+          <div style={{fontSize:60,fontWeight:800,color:scCol(sc),lineHeight:1}}>{sc.toFixed(1)}</div>
+          <div style={{color:'#4a6a8a',fontSize:11,marginTop:6}}>系統計算基準：{baseScore.toFixed(1)}（相對全組表現）</div>
+        </div>
+        <div style={{display:'flex',gap:8,justifyContent:'center',marginBottom:14}}>
+          {[-1,-0.5,0.5,1].map(function(d){
+            return (
+              <button key={d} onClick={function(){adjBy(d);}}
+                style={{background:'#0d1820',border:'1px solid #1e3a4a',
+                  color:d>0?'#00ffaa':'#ff9500',borderRadius:8,padding:'6px 14px',fontSize:14,fontWeight:600}}>
+                {d>0?'+':''}{d}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{fontSize:11,color:'#4a6a8a',textAlign:'center',marginBottom:14}}>
+          主管調整：{adj>=0?'+':''}{adj}
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:6}}>
+            <span style={{color:'#7a9ab8',fontSize:12}}>主管評語</span>
+            <button onClick={pickCmt}
+              style={{background:'#1a2030',border:'1px solid #3a5a7a',color:'#00cfff',
+                borderRadius:6,padding:'2px 10px',fontSize:11}}>🎲 隨機</button>
+          </div>
+          <textarea value={cm} onChange={function(e){setCm(e.target.value);}} placeholder="輸入評語..."
+            style={{width:'100%',background:'#0d1820',border:'1px solid #1e3a4a',color:'#cce8f8',
+              borderRadius:8,padding:'8px',fontSize:13,resize:'none',height:64,boxSizing:'border-box'}}/>
+        </div>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={onClose} style={{background:'#0d1820',border:'1px solid #1e3a4a',
+            color:'#7a9ab8',borderRadius:8,padding:'8px 18px',fontSize:13}}>取消</button>
+          <button onClick={function(){onSave({...m,adj:adj,cm:cm});}}
+            style={{background:'#1a2010',border:'1px solid #ffd700',color:'#ffd700',
+              borderRadius:8,padding:'8px 18px',fontWeight:700,fontSize:13}}>確認</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Edit Modal ── */
+function EditM({m, isAdmin, onSave, onClose}) {
+  const [items, setItems] = useState(m.items ? m.items.slice() : []);
+  const [mood,  setMood]  = useState(m.mood||2);
+  const [col,   setCol]   = useState(m.col||'#00d4ff');
+
+  function upd(i, ni) { const ns=items.slice(); ns[i]=ni; setItems(ns); }
+  function del(i) { setItems(items.filter(function(_,j){return j!==i;})); }
+  function add() {
+    setItems(items.concat([{id:mkId(),tx:'',cp:0,df:3,sd:'',dd:'',eta:'',note:'',cat:'other',catTx:'',arc:false,advice:''}]));
+  }
+  function save() {
+    const v = items.filter(function(it){return it.tx.trim();});
+    onSave({...m,items:v,mood:mood,col:col});
+  }
+
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000b',zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid '+col}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <span style={{color:col,fontWeight:700,fontSize:15}}>✏️ {m.nm} — 工作回報</span>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#88a',fontSize:24,padding:'4px 8px'}}>✕</button>
+        </div>
+
+        {/* 個人顏色 */}
+        <div style={{marginBottom:14}}>
+          <div style={{color:'#7a9ab8',fontSize:12,marginBottom:8}}>個人代表色</div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <input type="color" value={col} onChange={function(e){setCol(e.target.value);}}
+              style={{width:48,height:48,border:'none',borderRadius:10,
+                cursor:'pointer',background:'transparent',padding:2}}/>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {['#00d4ff','#39ff14','#ff9500','#ff4da6','#b44dff','#00ffaa','#ffd700',
+                '#ff6ec7','#00e5ff','#69ff47','#ff3860','#ff6b35','#7efff5','#ffe66d'].map(function(c){
+                return (
+                  <button key={c} onClick={function(){setCol(c);}}
+                    style={{width:26,height:26,borderRadius:'50%',background:c,border:'none',
+                      cursor:'pointer',outline:col===c?'3px solid #fff':'none',
+                      outlineOffset:2,flexShrink:0}}/>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* 心情 */}
+        <div style={{marginBottom:14}}>
+          <div style={{color:'#7a9ab8',fontSize:12,marginBottom:8}}>心情狀態</div>
+          <div style={{display:'flex',gap:8}}>
+            {MDS.map(function(md,i){
+              const a=mood===i;
+              return (
+                <button key={i} onClick={function(){setMood(i);}}
+                  style={{background:a?'#1e3a5a':'#0d1820',border:'1px solid '+(a?m.col:'#1e3a4a'),
+                    borderRadius:8,padding:'6px 10px',fontSize:18,
+                    transform:a?'scale(1.2)':'scale(1)',transition:'all .2s'}}>{md}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 工作項目 */}
+        <div style={{color:'#7a9ab8',fontSize:12,marginBottom:8}}>
+          工作項目
+          <span style={{color:'#4a6a8a',fontSize:11}}> （分類 / 難度★ / 完成比例 / 起始日 / 預計完成日）</span>
+        </div>
+        {items.map(function(it,i){
+          const ci = catInfo(it);
+          const isArc = it.arc === true;
+          return (
+            <div key={it.id} style={{marginBottom:10,opacity:isArc?0.5:1,
+              background:'#060e18',borderRadius:8,padding:'10px',
+              border:'1px solid '+(isArc?'#1a2a3a':ci.col+'44')}}>
+              {/* Row 1: 分類 + 描述 + 刪除 */}
+              <div style={{display:'flex',gap:5,alignItems:'center',marginBottom:7}}>
+                <select value={it.cat||'other'} disabled={isArc}
+                  onChange={function(e){upd(i,{...it,cat:e.target.value,catTx:'',});}}
+                  style={{background:ci.bg,border:'1px solid '+ci.col+'88',color:ci.col,
+                    borderRadius:6,padding:'5px 4px',fontSize:12,minWidth:74}}>
+                  <option value="buy">🛒 採購</option>
+                  <option value="exp">🔬 實驗</option>
+                  <option value="safe">⚠️ 安環</option>
+                  <option value="rou">🔄 例行</option>
+                  <option value="other">📌 其他</option>
+                </select>
+                {(it.cat==='other'||!it.cat) && (
+                  <input value={it.catTx||''} disabled={isArc}
+                    onChange={function(e){upd(i,{...it,catTx:e.target.value});}}
+                    placeholder="自填名稱"
+                    style={{width:80,background:'#0d1820',border:'1px solid #b44dff55',
+                      color:'#b44dff',borderRadius:6,padding:'5px 6px',fontSize:12}}/>
+                )}
+                <input value={it.tx} disabled={isArc}
+                  onChange={function(e){upd(i,{...it,tx:e.target.value});}}
+                  placeholder="工作描述..."
+                  style={{flex:1,background:'#0d1820',border:'1px solid #1e3a4a',color:'#cce8f8',
+                    borderRadius:6,padding:'6px 8px',fontSize:13,
+                    textDecoration:isArc?'line-through':'none'}}/>
+                {isArc
+                  ? <span className="done-badge">📁 歸檔</span>
+                  : <button onClick={function(){del(i);}}
+                      style={{background:'#3a0010',border:'1px solid #ff4da6',color:'#ff4da6',
+                        borderRadius:6,padding:'4px 9px',fontSize:13}}>✕</button>
+                }
+              </div>
+              {/* Row 2: 難度星 + 完成率 + 截止 + ETA */}
+              <div className="edit-r2">
+                <div style={{display:'flex',gap:3,alignItems:'center'}}>
+                  <span style={{fontSize:11,color:'#5a7a9a',marginRight:3}}>難度</span>
+                  {[1,2,3,4,5].map(function(n){
+                    const active = (it.df||3) >= n;
+                    return (
+                      <button key={n} disabled={isArc}
+                        onClick={function(){upd(i,{...it,df:n});}}
+                        style={{background:'transparent',border:'none',padding:0,
+                          fontSize:16,color:active?starCol(it.df||3):'#2a3a4a',
+                          cursor:isArc?'default':'pointer',lineHeight:1}}>
+                        {active?'★':'☆'}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0}}>
+                  <span style={{fontSize:10,color:'#7a9ab8',paddingLeft:2}}>完成比例</span>
+                  <select value={it.cp} disabled={isArc}
+                    onChange={function(e){upd(i,{...it,cp:parseInt(e.target.value)});}}
+                    style={{background:'#0d1820',border:'1px solid #1e3a4a',color:'#cce8f8',
+                      borderRadius:6,padding:'5px 4px',fontSize:12,width:80}}>
+                    <option value={0}>0%</option><option value={25}>25%</option>
+                    <option value={50}>50%</option><option value={75}>75%</option>
+                    <option value={100}>100%</option>
+                  </select>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0}}>
+                  <span style={{fontSize:10,color:'#39ff14',paddingLeft:2}}>起始日</span>
+                  <input type="date" value={toDateVal(it.sd||'')} disabled={isArc}
+                    onChange={function(e){upd(i,{...it,sd:e.target.value});}}
+                    style={{background:'#0d1820',border:'1px solid #39ff1444',color:'#39ff14',
+                      borderRadius:6,padding:'4px 6px',fontSize:13,width:'100%'}}/>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0}}>
+                  <span style={{fontSize:10,color:'#00cfff',paddingLeft:2}}>預計完成日</span>
+                  <input type="date" value={toDateVal(it.dd||'')} disabled={isArc}
+                    onChange={function(e){upd(i,{...it,dd:e.target.value});}}
+                    style={{background:'#0d1820',border:'1px solid #00cfff44',color:'#00cfff',
+                      borderRadius:6,padding:'4px 6px',fontSize:13,width:'100%'}}/>
+                </div>
+              </div>
+              {/* Row 3: 本週進度概述 */}
+              <div style={{marginTop:6}}>
+                <textarea value={it.note||''} disabled={isArc}
+                  onChange={function(e){upd(i,{...it,note:e.target.value});}}
+                  placeholder="本週進度概述（說明本週實際進展、遇到的問題或備註）"
+                  rows={2}
+                  style={{width:'100%',background:'#060c18',border:'1px solid #2a3a5a',
+                    color:'#a0c4e0',borderRadius:6,padding:'6px 8px',fontSize:12,
+                    resize:'vertical',boxSizing:'border-box',lineHeight:1.6,
+                    opacity:isArc?0.6:1}}/>
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={add}
+          style={{width:'100%',background:'#0d2030',border:'1px dashed #1e5a7a',color:'#4a9ab8',
+            borderRadius:8,padding:'8px',marginBottom:16,marginTop:4,fontSize:13}}>
+          ＋ 新增工作項目
+        </button>
+        <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={onClose}
+            style={{background:'#0d1820',border:'1px solid #1e3a4a',color:'#7a9ab8',
+              borderRadius:8,padding:'8px 20px',fontSize:13}}>取消</button>
+          <button onClick={save}
+            style={{background:'#0d3a5a',border:'1px solid '+m.col,color:m.col,
+              borderRadius:8,padding:'8px 20px',fontWeight:700,fontSize:13}}>提交回報 ✓</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Archived Items Modal ── */
+function ArcListM({m, onClose}) {
+  const arcItems = (m.items||[]).filter(function(it){ return it.arc; });
+  return (
+    <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000c',zIndex:3000,
+      display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div className="modal-box" style={{border:'1px solid #00ffaa44',maxHeight:'85vh'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+          <span style={{fontSize:20}}>{m.nm[m.nm.length-1]}</span>
+          <span style={{color:'#00ffaa',fontWeight:700,fontSize:16}}>{m.nm} 的已完成工作</span>
+          <span style={{marginLeft:'auto',background:'#003d1a',color:'#00ffaa',
+            fontSize:11,padding:'2px 8px',borderRadius:10,border:'1px solid #00ffaa44'}}>
+            共 {arcItems.length} 項
+          </span>
+        </div>
+        {arcItems.length === 0
+          ? <div style={{color:'#3a6a5a',textAlign:'center',padding:'30px 0',fontSize:14}}>尚無已完成工作</div>
+          : arcItems.map(function(it){
+              const ci = catInfo(it);
+              return (
+                <div key={it.id} style={{background:'#060e18',borderRadius:8,padding:'10px 12px',
+                  marginBottom:10,border:'1px solid #003d1a'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                    <span style={{fontSize:11,padding:'1px 7px',borderRadius:10,
+                      background:ci.bg,color:ci.col,border:'1px solid '+ci.col+'55',flexShrink:0}}>
+                      {ci.ic} {ci.lb}
+                    </span>
+                    <span style={{flex:1,color:'#a0d8b8',fontSize:13,textDecoration:'line-through'}}>{it.tx}</span>
+                    <span style={{color:'#00ffaa',fontSize:12,fontWeight:700,flexShrink:0}}>100%</span>
+                  </div>
+                  <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:11,color:'#4a8a6a'}}>
+                    {it.sd && <span>📅 起始：{fmtDate(it.sd)}</span>}
+                    {it.dd && <span>🏁 完成日：{fmtDate(it.dd)}</span>}
+                    <span style={{color:starCol(it.df||3)}}>{stars(it.df||3)}</span>
+                    {it.arcAt && <span>🗂 歸檔：{it.arcAt}</span>}
+                  </div>
+                  {it.note && (
+                    <div style={{marginTop:6,fontSize:11,color:'#3a7a5a',
+                      background:'#030a06',borderRadius:4,padding:'4px 8px'}}>📝 {it.note}</div>
+                  )}
+                </div>
+              );
+            })
+        }
+        <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
+          <button onClick={onClose}
+            style={{background:'#0d1820',border:'1px solid #1e3a4a',color:'#7a9ab8',
+              borderRadius:8,padding:'8px 20px',fontSize:13}}>關閉</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Member Card ── */
+function MCard({m, score, isAdmin, onEdit, onScore, onDelete, onArchiveItem, onAdviceChange, onAddItem, onRemoveItem}) {
+  const [open, setOpen] = useState(false);
+  const [archiving, setArchiving] = useState(null);
+  const [showArc, setShowArc] = useState(false);
+  const acp = (m.items && m.items.length)
+    ? Math.round(m.items.reduce(function(a,it){return a+it.cp;},0)/m.items.length) : 0;
+  const doneThisWeek = m.reported === getWeekKey();
+  const sc = score;
+  const cpColors = ['#3a5a7a','#ff9500','#00cfff','#b44dff','#00ffaa'];
+
+  function doArchive(it) {
+    setArchiving(it.id);
+    onArchiveItem(m, it, function(){setArchiving(null);});
+  }
+
+  function buildReport() {
+    const lines = ['【週報】' + WEEK_LB + ' — ' + m.nm, ''];
+    m.items.forEach(function(it){
+      const ci = catInfo(it);
+      lines.push('[' + ci.lb + '] ' + it.tx);
+      lines.push('  完成比例：' + it.cp + '%  難度：' + stars(it.df) + '  預計完成日：' + (fmtDate(it.dd)||'—'));
+      if (it.note) lines.push('  進度：' + it.note);
+    });
+    lines.push('');
+    lines.push('整體完成率：' + acp + '%');
+    return lines.join('\n');
+  }
+
+  function genEmail() {
+    const subj = encodeURIComponent('[週報] ' + WEEK_LB + ' — ' + m.nm);
+    const body = encodeURIComponent(buildReport());
+    window.open('mailto:?subject=' + subj + '&body=' + body);
+  }
+
+  function genLine() {
+    window.open('https://line.me/R/msg/text/?' + encodeURIComponent(buildReport()));
+  }
+
+  return (
+    <div style={{background: doneThisWeek?'#030e08':'#070f18',
+      border:'1px solid '+(doneThisWeek?'#00ffaa':(open?m.col:'#1a2a3a')),
+      borderRadius:14,marginBottom:10,overflow:'hidden',transition:'all .3s',
+      boxShadow:doneThisWeek?'0 0 10px #00ffaa33':(open?('0 0 14px '+m.col+'44'):'none')}}>
+      {/* Header */}
+      <div className="card-hd" onClick={function(){setOpen(!open);}}>
+        <div style={{width:42,height:42,borderRadius:'50%',border:'2px solid '+m.col,flexShrink:0,
+          display:'flex',alignItems:'center',justifyContent:'center',fontSize:17,fontWeight:700,
+          color:m.col,background:'linear-gradient(135deg,'+m.col+'22,'+m.col+'66)'}}>
+          {m.nm.slice(-1)}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,flexWrap:'wrap'}}>
+            <span style={{color:'#eef4ff',fontWeight:700,fontSize:15}}>{m.nm}</span>
+            <span style={{fontSize:16}}>{MDS[m.mood]}</span>
+            <span style={{fontSize:10,color:'#5a7a9a'}}>{MDB[m.mood]}</span>
+            {m.mbti && (
+              <span style={{fontSize:10,background:'#1a0a2a',border:'1px solid #b44dff66',
+                color:'#b44dff',padding:'1px 6px',borderRadius:8,fontWeight:700}}>
+                {m.mbti}
+              </span>
+            )}
+            {doneThisWeek && (
+              <span style={{fontSize:10,background:'#003d1a',border:'1px solid #00ffaa88',
+                color:'#00ffaa',padding:'1px 8px',borderRadius:8,fontWeight:700}}>
+                ✅ 本週已完成
+              </span>
+            )}
+            {m.cm && (
+              <span style={{fontSize:10,color:'#7a9ab8',flex:1,overflow:'hidden',
+                textOverflow:'ellipsis',whiteSpace:'nowrap'}}>「{m.cm}」</span>
+            )}
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{flex:1,height:5,background:'#1a2a3a',borderRadius:3,overflow:'hidden'}}>
+              <div style={{height:'100%',width:acp+'%',background:m.col,borderRadius:3,transition:'width .6s'}}/>
+            </div>
+            <span style={{fontSize:12,color:m.col,fontWeight:700,minWidth:34}}>{acp}%</span>
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+          <div className="ring-wrap" style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
+            <Ring p={acp} c={m.col} s={44}/>
+            <span style={{position:'absolute',fontSize:9,fontWeight:700,color:m.col}}>{acp}</span>
+          </div>
+          <div style={{textAlign:'center',minWidth:28}}>
+            <div style={{fontSize:16,fontWeight:800,color:scCol(sc)}}>{sc.toFixed(1)}</div>
+            <div style={{fontSize:9,color:'#4a6a8a'}}>分</div>
+          </div>
+          <span style={{color:'#4a6a8a',fontSize:13}}>{open?'▲':'▼'}</span>
+        </div>
+      </div>
+
+      {/* Body */}
+      {open && (
+        <div style={{borderTop:'1px solid #1a2a3a',padding:'12px 16px'}}>
+          {m.mbti && (
+            <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:12,
+              background:'#0d1020',border:'1px solid #b44dff33',borderRadius:10,padding:'10px 12px'}}>
+              <span style={{fontSize:18,flexShrink:0}}>💬</span>
+              <div>
+                <span style={{fontSize:10,color:'#b44dff',fontWeight:700,marginRight:6}}>{m.mbti}</span>
+                <span style={{fontSize:12,color:'#c0b8e0',lineHeight:1.6}}>{getMbtiMotiv(m.mbti)}</span>
+              </div>
+            </div>
+          )}
+          {(!m.items||!m.items.length) && (
+            <div style={{color:'#4a6a8a',textAlign:'center',padding:'10px 0',fontSize:13}}>
+              尚無工作項目，點擊「填報」新增
+            </div>
+          )}
+          {m.items && m.items.map(function(it){
+            const ci2 = it.cp===100?4:it.cp>=75?3:it.cp>=50?2:it.cp>=25?1:0;
+            const dfCol = it.df>=5?'#ff4da6':it.df>=4?'#ff9500':it.df>=3?'#ffd700':it.df>=2?'#00cfff':'#00ffaa';
+            const isArc = it.arc===true;
+            const isBusy = archiving===it.id;
+            const cinfo = catInfo(it);
+            return (
+              <div key={it.id} className={isArc?'arc-row':''}
+                style={{padding:'8px 0',borderBottom:'1px solid #0d1820'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                  {/* 勾選框 */}
+                  <div style={{width:17,height:17,borderRadius:4,flexShrink:0,
+                    border:'2px solid '+(isArc?'#00ffaa':cpColors[ci2]),
+                    background:isArc?'#00ffaa22':'transparent',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:11,color:'#00ffaa'}}>
+                    {isArc && '✓'}
+                  </div>
+                  {/* 分類標籤 */}
+                  <span style={{fontSize:11,padding:'1px 7px',borderRadius:10,flexShrink:0,
+                    background:cinfo.bg,color:cinfo.col,border:'1px solid '+cinfo.col+'55'}}>
+                    {cinfo.ic} {cinfo.lb}
+                  </span>
+                  <span style={{flex:1,color:isArc?'#5a8a6a':'#cce8f8',fontSize:13,
+                    textDecoration:isArc?'line-through':'none'}}>{it.tx}</span>
+                  {/* 完成率 */}
+                  <span style={{fontSize:12,fontWeight:700,color:cpColors[ci2],minWidth:32,textAlign:'right'}}>{it.cp}%</span>
+                  {/* 歸檔按鈕 */}
+                  {isArc
+                    ? <span className="done-badge">📁 已歸檔</span>
+                    : <button onClick={function(){doArchive(it);}} disabled={isBusy}
+                        style={{background:isBusy?'#1a2a1a':'#003d1a',
+                          border:'1px solid '+(isBusy?'#2a4a2a':'#00ffaa'),
+                          color:isBusy?'#3a6a3a':'#00ffaa',borderRadius:8,
+                          padding:'3px 9px',fontSize:11,fontWeight:600,whiteSpace:'nowrap',
+                          animation:isBusy?'shimmer 1s infinite':'none'}}>
+                        {isBusy?'歸檔中…':'✅ 完成歸檔'}
+                      </button>
+                  }
+                  {/* 管理員刪除單項 */}
+                  {isAdmin && !isArc && (
+                    <button onClick={function(){onRemoveItem(m, it.id);}}
+                      title="刪除此項目"
+                      style={{background:'transparent',border:'1px solid #ff4da655',color:'#ff4da6',
+                        borderRadius:6,padding:'2px 7px',fontSize:12,lineHeight:1,cursor:'pointer'}}>✕</button>
+                  )}
+                </div>
+                {/* 次要資訊 */}
+                <div className="item-meta" style={{marginBottom: it.note ? 4 : 0}}>
+                  <span style={{color:dfCol}}>{'難度 '+stars(it.df)}</span>
+                  {it.sd  && <span style={{color:'#39ff14'}}>🗓 起：{fmtDate(it.sd)}</span>}
+                  {it.dd  && <span style={{color:'#00cfff'}}>🎯 完成：{fmtDate(it.dd)}</span>}
+                </div>
+                {it.note && (
+                  <div style={{marginLeft:25,marginTop:2,padding:'5px 10px',
+                    background:'#060c18',borderLeft:'2px solid #2a4a6a',
+                    color:'#7aa8c8',fontSize:12,lineHeight:1.6,borderRadius:'0 4px 4px 0',
+                    whiteSpace:'pre-wrap'}}>
+                    📝 {it.note}
+                  </div>
+                )}
+                {isAdmin && !isArc && (
+                  <textarea value={it.advice||''}
+                    onChange={function(e){onAdviceChange(m.id,it.id,e.target.value);}}
+                    placeholder="💡 主管建議（僅管理員可編輯）"
+                    rows={2}
+                    style={{display:'block',width:'calc(100% - 25px)',marginLeft:25,marginTop:4,
+                      padding:'5px 10px',background:'#0c1424',
+                      border:'1px solid #ffd70044',color:'#ffd700',fontSize:12,
+                      lineHeight:1.6,borderRadius:'0 4px 4px 0',
+                      resize:'vertical',boxSizing:'border-box'}}/>
+                )}
+                {!isAdmin && it.advice && (
+                  <div style={{marginLeft:25,marginTop:2,padding:'5px 10px',
+                    background:'#0c1424',borderLeft:'2px solid #ffd70066',
+                    color:'#ffd700',fontSize:12,lineHeight:1.6,borderRadius:'0 4px 4px 0',
+                    whiteSpace:'pre-wrap'}}>
+                    💡 {it.advice}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {m.items && m.items.some(function(it){return it.arc;}) && (
+            <div style={{marginTop:6,textAlign:'right'}}>
+              <button onClick={function(e){e.stopPropagation();setShowArc(true);}}
+                style={{background:'#003d1a',border:'1px solid #00ffaa55',color:'#00ffaa',
+                  borderRadius:8,padding:'4px 12px',fontSize:11,cursor:'pointer',fontWeight:600}}>
+                ✅ 已完成工作 {m.items.filter(function(it){return it.arc;}).length} 項
+              </button>
+            </div>
+          )}
+          {showArc && <ArcListM m={m} onClose={function(){setShowArc(false);}}/>}
+
+          {isAdmin && (
+            <div style={{marginTop:8,marginBottom:4}}>
+              <button onClick={function(){onAddItem(m);}}
+                style={{background:'#0a1a2a',border:'1px dashed #00d4ff66',color:'#00d4ff',
+                  borderRadius:8,padding:'5px 14px',fontSize:12,cursor:'pointer',width:'100%',
+                  letterSpacing:.3}}>＋ 新增工作項目</button>
+            </div>
+          )}
+          <div className="card-ft">
+            <button onClick={genEmail}
+              style={{background:'#0d1830',border:'1px solid #4a7aaa',color:'#7ab4cc',
+                borderRadius:8,padding:'6px 14px',fontSize:13}}>
+              📧 寄送
+            </button>
+            {isAdmin && (
+              <button onClick={genLine}
+                style={{background:'#0d2010',border:'1px solid #00c300',color:'#00c300',
+                  borderRadius:8,padding:'6px 14px',fontSize:13}}>
+                💬 LINE 分享
+              </button>
+            )}
+            <button onClick={function(){onEdit(m);}}
+              style={{background:'#0d2030',border:'1px solid '+m.col,color:m.col,
+                borderRadius:8,padding:'6px 16px',fontSize:13}}>✏️ 填報</button>
+            {isAdmin && (
+              <button onClick={function(){onScore(m);}}
+                style={{background:'#1a2010',border:'1px solid #ffd700',color:'#ffd700',
+                  borderRadius:8,padding:'6px 16px',fontSize:13}}>⭐ 評分</button>
+            )}
+            {isAdmin && (
+              <button onClick={function(){onDelete(m);}}
+                style={{background:'#3a0010',border:'1px solid #ff4da6',color:'#ff4da6',
+                  borderRadius:8,padding:'6px 14px',fontSize:13}}>🗑️ 刪除</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════ APP ══════════════ */
+function App() {
+  const [ms, setMs]               = useState(INIT);
+  const [tab, setTab]             = useState('rpt');
+  const [edit, setEdit]           = useState(null);
+  const [scoreM, setScoreM]       = useState(null);
+  const [toast, setToast]         = useState(null);
+  const [conf, setConf]           = useState(false);
+  const [isAdm, setIsAdm]         = useState(false);
+  const [showAdm, setShowAdm]     = useState(false);
+  const [showSets, setShowSets]   = useState(false);
+  const [showPrm, setShowPrm]     = useState(false);
+  const [pw, setPw]               = useState('');
+  const [authReq, setAuthReq]     = useState(null);
+  const [mbtiReq, setMbtiReq]     = useState(null);
+  const [countdown, setCountdown]       = useState('');
+  const [closeCountdown, setCloseCd]    = useState('');
+  const [fillOpen, setFillOpen]         = useState(isInFillWindow);
+  const [gasUrl, setGasUrl]       = useState(function(){ return localStorage.getItem(GAS_KEY)||''; });
+  const [arcUrl, setArcUrl]       = useState(function(){ return localStorage.getItem(ARC_KEY)||''; });
+  const [sheetUrl, setSheetUrl]       = useState(function(){ return localStorage.getItem(SHEET_KEY)||''; });
+  const [arcSheetUrl, setArcSheetUrl] = useState(function(){ return localStorage.getItem(ARC_SHEET_KEY)||''; });
+  const [arcDone, setArcDone]     = useState(function(){ return localStorage.getItem(ARC_DONE)===getWeekKey(); });
+  const [params, setParams]       = useState(loadParams);
+  const msRef = useRef(null);
+  msRef.current = ms;
+
+  useEffect(function(){
+    var prevOpen = isInFillWindow();
+    function tick(){
+      var open = isInFillWindow();
+      setFillOpen(open);
+      if (!open) setCountdown(fmtCountdown(nextOpenMs()));
+      if (open)  setCloseCd(fmtCountdown(nextCloseMs()));
+      // Reset arcDone when new week starts (Sun 23:00)
+      var curWk = getWeekKey();
+      if (open && localStorage.getItem(ARC_DONE) !== curWk) {
+        setArcDone(false);
+      }
+      // Auto-archive when fill window just closed (Thu 23:30)
+      if (prevOpen && !open) {
+        var wk  = curWk;
+        var arc = localStorage.getItem(ARC_KEY) || localStorage.getItem(GAS_KEY);
+        var lastDone = localStorage.getItem(ARC_DONE);
+        if (arc && lastDone !== wk) {
+          localStorage.setItem(ARC_DONE, wk);
+          setArcDone(true);
+          archiveWeeklyReport(msRef.current, arc, wk)
+            .then(function(){ showToast('✅ 週報已自動歸檔！', true); })
+            .catch(function(){ showToast('⚠️ 自動歸檔失敗', false); });
+        }
+      }
+      prevOpen = open;
+    }
+    tick();
+    var t = setInterval(tick, 1000);
+    return function(){ clearInterval(t); };
+  }, []);
+
+  /* compute group scores */
+  const baseScores = calcGroupScores(ms, params);
+  function getScoreFor(m) { return getFinal(m, baseScores); }
+
+  function showToast(msg,ok) { setToast({msg,ok}); }
+  function boom() { setConf(true); setTimeout(function(){setConf(false);},2500); }
+
+  function saveGas(url, arc, sht, arcSht) {
+    setGasUrl(url);          localStorage.setItem(GAS_KEY,       url);
+    setArcUrl(arc);          localStorage.setItem(ARC_KEY,       arc);
+    setSheetUrl(sht);        localStorage.setItem(SHEET_KEY,     sht);
+    setArcSheetUrl(arcSht);  localStorage.setItem(ARC_SHEET_KEY, arcSht);
+    setShowSets(false);
+    showToast('✅ 設定已儲存', true);
+  }
+  function manualArchive() {
+    var target = arcUrl || gasUrl;
+    if (!target) { setShowSets(true); return; }  // 未設定時直接開設定頁
+    var wk = getWeekKey();
+    archiveWeeklyReport(msRef.current, target, wk)
+      .then(function(){
+        localStorage.setItem(ARC_DONE, wk);
+        setArcDone(true);
+        showToast('✅ 週報已完成歸檔！', true);
+      })
+      .catch(function(){ showToast('⚠️ 歸檔失敗，請確認 Sheets 網址', false); });
+  }
+  function saveParams(p) {
+    setParams(p); localStorage.setItem(PRM_KEY,JSON.stringify(p));
+    setShowPrm(false); showToast('✅ 評分參數已更新',true);
+  }
+
+  function archiveItem(m, it, done) {
+    const arcAt = fmtNow();
+    setMs(function(prev){
+      return prev.map(function(mem){
+        if (mem.id!==m.id) return mem;
+        const newItems = mem.items.map(function(x){
+          if (x.id!==it.id) return x;
+          const r = {...x}; r.cp=100; r.arc=true; r.arcAt=arcAt; return r;
+        });
+        const u = {...mem}; u.items=newItems; return u;
+      });
+    });
+    if (!gasUrl) {
+      showToast('⚠️ 未設定 Sheets，僅本地完成',false); done(); boom(); return;
+    }
+    const cinfo = catInfo(it);
+    const payload = {arcAt:arcAt,member:m.nm,category:cinfo.ic+' '+cinfo.lb,
+      task:it.tx,startDate:it.sd||'—',deadline:it.dd||'—',eta:it.eta||'—',
+      progress:'100%',difficulty:stars(it.df),note:it.note||''};
+    sendToSheet(gasUrl,payload)
+      .then(function(){ showToast('📁「'+it.tx+'」已歸檔到 Sheets！',true); boom(); })
+      .catch(function(){ showToast('⚠️ 本地完成，Sheets 傳送失敗',false); })
+      .finally(function(){ done(); });
+  }
+
+  function saveEdit(nm) {
+    const saved = {...nm, reported: getWeekKey()};
+    setMs(ms.map(function(m){ return m.id===saved.id?saved:m; }));
+    setEdit(null); showToast('✅ '+saved.nm+' 本週回報已完成！',true);
+    if (saved.items&&saved.items.length&&saved.items.every(function(it){return it.cp===100;})) boom();
+  }
+  function saveScore(nm) {
+    setMs(ms.map(function(m){
+      if (m.id!==nm.id) return m;
+      const r={...m}; r.adj=nm.adj; r.cm=nm.cm; return r;
+    }));
+    setScoreM(null); showToast('⭐ 評分已儲存！',true);
+  }
+  function addItemToMember(m) {
+    const newItem = {id:mkId(), tx:'', cp:0, df:3, sd:'', dd:'', cat:'other', catTx:'', advice:''};
+    setMs(function(prev){
+      return prev.map(function(mem){
+        if (mem.id!==m.id) return mem;
+        return {...mem, items:[...(mem.items||[]), newItem]};
+      });
+    });
+    // Open edit so they can fill in details
+    setEdit({...m, items:[...(m.items||[]), newItem]});
+    showToast('➕ 已新增工作項目，請填寫內容', true);
+  }
+  function removeItemFromMember(m, itemId) {
+    if (!window.confirm('確定刪除此工作項目？')) return;
+    setMs(function(prev){
+      return prev.map(function(mem){
+        if (mem.id!==m.id) return mem;
+        return {...mem, items:(mem.items||[]).filter(function(it){return it.id!==itemId;})};
+      });
+    });
+    showToast('🗑️ 已刪除工作項目', true);
+  }
+  function deleteMember(m) {
+    if (!window.confirm('確定刪除「'+m.nm+'」？')) return;
+    setMs(function(prev){return prev.filter(function(x){return x.id!==m.id;});});
+    showToast('🗑️ 已刪除：'+m.nm,true);
+  }
+  function tryAdm() {
+    if (pw==='0721') {
+      setIsAdm(true); setShowAdm(false); setPw(''); showToast('👑 管理員登入成功',true);
+    } else { showToast('❌ 密碼錯誤',false); }
+  }
+  function onEditRequest(m) {
+    if (isAdm) { setEdit(m); return; }          // 管理員直接進入，不受任何限制
+    if (!fillOpen) {
+      showToast('🔒 填報尚未開放，週日 23:00 起開放', false); return;
+    }
+    if (!m.mbti) { setMbtiReq({m:m}); return; }
+    if (!m.pwd) { setEdit(m); return; }
+    setAuthReq({m:m});
+  }
+  function onMbtiDone(m, mbtiType) {
+    setMs(function(prev){
+      return prev.map(function(x){ return x.id===m.id ? {...x, mbti:mbtiType} : x; });
+    });
+    const updated = {...m, mbti:mbtiType};
+    setMbtiReq(null);
+    if (isAdm || !m.pwd) { setEdit(updated); return; }
+    setAuthReq({m:updated});
+  }
+  function onAdviceChange(memberId, itemId, advice) {
+    setMs(function(prev) {
+      return prev.map(function(mem) {
+        if (mem.id !== memberId) return mem;
+        const newItems = mem.items.map(function(it) {
+          if (it.id !== itemId) return it;
+          const r = {...it}; r.advice = advice; return r;
+        });
+        const r = {...mem}; r.items = newItems; return r;
+      });
+    });
+  }
+
+  /* 全組統計 */
+  const avgAll = Math.round(ms.reduce(function(a,m){
+    if (!m.items||!m.items.length) return a;
+    return a + m.items.reduce(function(s,it){return s+it.cp;},0)/m.items.length;
+  },0)/ms.length);
+  const avgScore = Math.round(ms.reduce(function(a,m){return a+getScoreFor(m);},0)/ms.length*10)/10;
+  const arcTotal = ms.reduce(function(a,m){
+    return a+(m.items?m.items.filter(function(it){return it.arc;}).length:0);
+  },0);
+  const allActItems = ms.reduce(function(a,m){return a.concat(m.items||[]);}, []).filter(function(it){return !it.arc;});
+  const clearRate = allActItems.length ? Math.round(allActItems.filter(function(it){return it.cp===100;}).length/allActItems.length*100) : 0;
+
+  const ranked = ms.slice().sort(function(a,b){return getScoreFor(b)-getScoreFor(a);});
+  const medals = ['🥇','🥈','🥉'];
+  const TABS = [{k:'rpt',lb:'📋 週報',adm:false},{k:'rnk',lb:'🏆 排行',adm:true},{k:'stat',lb:'📊 統計',adm:false}];
+
+  return (
+    <div style={{minHeight:'100vh',background:'#040b12',paddingBottom:48}}>
+      <Conf on={conf}/>
+      {toast && <Toast msg={toast.msg} ok={toast.ok} done={function(){setToast(null);}}/>}
+      {edit   && <EditM m={edit} isAdmin={isAdm} onSave={saveEdit} onClose={function(){setEdit(null);}}/>}
+      {authReq && <MemberAuthM m={authReq.m}
+                    onAuth={function(){setEdit(authReq.m);setAuthReq(null);}}
+                    onClose={function(){setAuthReq(null);}}/>}
+      {mbtiReq && <MbtiM m={mbtiReq.m}
+                    onDone={function(type){onMbtiDone(mbtiReq.m,type);}}
+                    onClose={function(){setMbtiReq(null);}}/>}
+      {scoreM && <ScoreM m={scoreM} baseScore={baseScores[scoreM.id]||5}
+                   onSave={saveScore} onClose={function(){setScoreM(null);}}/>}
+      {showSets && <SettingsM gasUrl={gasUrl} arcUrl={arcUrl} sheetUrl={sheetUrl} arcSheetUrl={arcSheetUrl} onSave={saveGas} onClose={function(){setShowSets(false);}}/>}
+      {showPrm  && <ScoreParamsM params={params} onSave={saveParams} onClose={function(){setShowPrm(false);}}/>}
+
+      {/* Admin Login */}
+      {showAdm && (
+        <div className="modal-overlay" style={{position:'fixed',inset:0,background:'#000b',zIndex:3000,
+          display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div className="modal-box" style={{border:'1px solid #ffd700',maxWidth:'min(320px,96vw)'}}>
+            <div style={{color:'#ffd700',fontWeight:700,fontSize:16,marginBottom:14}}>🔐 管理員登入</div>
+            <input type="password" value={pw}
+              onChange={function(e){setPw(e.target.value);}}
+              onKeyDown={function(e){if(e.key==='Enter')tryAdm();}}
+              placeholder="輸入密碼" autoFocus
+              style={{width:'100%',background:'#0d1820',border:'1px solid #1e3a4a',color:'#cce8f8',
+                borderRadius:8,padding:'10px',fontSize:14,boxSizing:'border-box',marginBottom:12}}/>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={function(){setShowAdm(false);setPw('');}}
+                style={{flex:1,background:'#0d1820',border:'1px solid #1e3a4a',
+                  color:'#7a9ab8',borderRadius:8,padding:'9px',fontSize:13}}>取消</button>
+              <button onClick={tryAdm}
+                style={{flex:1,background:'#1a2010',border:'1px solid #ffd700',
+                  color:'#ffd700',borderRadius:8,padding:'9px',fontWeight:700,fontSize:13}}>確認</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{background:'#070f18',borderBottom:'1px solid #1a2a3a',padding:'12px 16px 0'}}>
+        <div style={{maxWidth:740,margin:'0 auto'}}>
+          <div className="hdr-row">
+            <div style={{minWidth:0,flex:1}}>
+              <div className="title-txt" style={{fontWeight:800,fontSize:18,color:'#00d4ff',letterSpacing:.5}}>
+                🌊 海洋資源開發專題 工作進度回報
+              </div>
+              <div className="sub-txt" style={{fontSize:11,marginTop:3,lineHeight:1.8}}>
+                <span style={{color:'#b8a000'}}>{WEEK_LB}　上週工作清空率 {clearRate}%　團隊總人數 {ms.length} 人</span><br/>
+                {fillOpen
+                  ? <span style={{color:'#00ffaa',fontWeight:700}}>📝 填報開放中（週四 23:30 截止，{closeCountdown} 後關閉）</span>
+                  : <span style={{color:'#ff9500'}}>🔒 {countdown} 後開放</span>
+                }
+              </div>
+            </div>
+            <div className="hdr-btns">
+              {/* 已完成並歸檔 → 最左，開啟週報歸檔試算表 */}
+              {isAdm && arcDone && (
+                <button onClick={function(){ arcSheetUrl ? window.open(arcSheetUrl,'_blank') : setShowSets(true); }}
+                  style={{background:'#0d1820',border:'1px solid #ffffff55',color:'#ffffff',
+                    borderRadius:8,padding:'8px 14px',fontSize:13,fontWeight:600,
+                    whiteSpace:'nowrap',cursor:'pointer',minWidth:130,textAlign:'center'}}>
+                  已完成並歸檔
+                </button>
+              )}
+              {/* 每週工作紀錄 → 開啟項目歸檔試算表 */}
+              <button onClick={function(){ sheetUrl ? window.open(sheetUrl,'_blank') : setShowSets(true); }}
+                style={{background:'#0d1820',border:'1px solid #ffffff55',color:'#ffffff',
+                  borderRadius:8,padding:'8px 14px',fontSize:13,fontWeight:600,
+                  whiteSpace:'nowrap',minWidth:130,textAlign:'center'}}>
+                每週工作紀錄
+              </button>
+              {/* 設定連結（⚙️）*/}
+              <button onClick={function(){setShowSets(true);}}
+                style={{background:'#0d1820',border:'1px solid #1e3a4a',color:'#4a6a8a',
+                  borderRadius:8,padding:'8px 10px',fontSize:14}}>⚙️</button>
+              {isAdm && !arcDone && (
+                <button onClick={manualArchive}
+                  title="手動歸檔本週週報"
+                  style={{background:'#0d1820',border:'1px solid #ffaa44',
+                    color:'#ffaa44',borderRadius:8,padding:'7px 12px',fontSize:13,fontWeight:600,whiteSpace:'nowrap'}}>
+                  完成歸檔
+                </button>
+              )}
+              {/* 評分參數（原皇冠位置）*/}
+              {isAdm && (
+                <button onClick={function(){setShowPrm(true);}}
+                  style={{background:'#1a2010',border:'1px solid #ffd700',color:'#ffd700',
+                    borderRadius:8,padding:'8px 12px',fontSize:16}}>📐</button>
+              )}
+              <button onClick={function(){
+                  if(isAdm){setIsAdm(false);if(tab==='rnk')setTab('rpt');showToast('已登出',true);}
+                  else setShowAdm(true);
+                }}
+                style={{background:'#0d1820',border:'1px solid '+(isAdm?'#ffd700':'#1e3a4a'),
+                  color:isAdm?'#ffd700':'#7a9ab8',borderRadius:8,padding:'8px 12px',fontSize:14}}>
+                {isAdm?'登出':'🔐'}
+              </button>
+            </div>
+          </div>
+          <div className="tabs">
+            {TABS.filter(function(tb){return !tb.adm || isAdm;}).map(function(tb){
+              const a=tab===tb.k;
+              return (
+                <button key={tb.k} onClick={function(){setTab(tb.k);}}
+                  style={{background:a?'#00d4ff22':'transparent',
+                    border:a?'1px solid #00d4ff':'1px solid transparent',
+                    borderBottom:'none',color:a?'#00d4ff':'#7a9ab8',
+                    borderRadius:'8px 8px 0 0',padding:'8px 18px',
+                    fontSize:13,fontWeight:a?700:400,whiteSpace:'nowrap'}}>{tb.lb}</button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{maxWidth:740,margin:'0 auto',padding:'12px 12px 0'}}>
+
+        {/* 週報 */}
+        {tab==='rpt' && (
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
+              <span style={{fontSize:12,color:'#4a6a8a'}}>
+                展開卡片填報工作項目
+              </span>
+              {isAdm && (
+                <button onClick={function(){
+                    const nm=window.prompt('新成員姓名：');
+                    if (!nm||!nm.trim()) return;
+                    const cols=['#00d4ff','#39ff14','#ff9500','#ff4da6','#b44dff','#00ffaa','#ffd700'];
+                    const col=cols[ms.length%cols.length];
+                    setMs(ms.concat([{id:mkId(),nm:nm.trim(),col:col,mood:2,adj:0,cm:'',email:'',pwd:'',items:[]}]));
+                    showToast('✅ 已新增：'+nm.trim(),true);
+                  }}
+                  style={{background:'#0d2030',border:'1px solid #00d4ff',
+                    color:'#00d4ff',borderRadius:8,padding:'8px 14px',fontSize:13}}>
+                  ＋ 新增成員
+                </button>
+              )}
+            </div>
+            {ms.map(function(m){
+              return (
+                <MCard key={m.id} m={m} score={getScoreFor(m)} isAdmin={isAdm}
+                  onEdit={onEditRequest}
+                  onScore={function(x){setScoreM(x);}}
+                  onDelete={deleteMember}
+                  onArchiveItem={archiveItem}
+                  onAdviceChange={onAdviceChange}
+                  onAddItem={addItemToMember}
+                  onRemoveItem={removeItemFromMember}/>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 排行 */}
+        {tab==='rnk' && (
+          <div>
+            <div style={{textAlign:'center',marginBottom:20}}>
+              <div style={{fontSize:28,fontWeight:800,color:'#ffd700',marginBottom:4}}>🏆 排行榜</div>
+              <div style={{fontSize:12,color:'#4a6a8a'}}>
+                依系統評分排序（完成率 {params.wC}% + 難度 {params.wD}% + 任務量 {params.wI}% + 準時率 {params.wO}%）
+              </div>
+            </div>
+            {ranked.map(function(m,i){
+              const acp2 = (m.items&&m.items.length)
+                ? Math.round(m.items.reduce(function(a,it){return a+it.cp;},0)/m.items.length):0;
+              const sc2 = getScoreFor(m);
+              const bdCol = i===0?'#ffd700':i===1?'#c0c0c0':i===2?'#cd7f32':'#1a2a3a';
+              return (
+                <div key={m.id} style={{background:'#070f18',border:'1px solid '+bdCol,
+                  borderRadius:12,marginBottom:10,padding:'14px 18px',
+                  display:'flex',alignItems:'center',gap:14,
+                  boxShadow:i===0?'0 0 18px #ffd70033':'none'}}>
+                  <span style={{fontSize:28,minWidth:36,textAlign:'center'}}>
+                    {i<3?medals[i]:i+1}
+                  </span>
+                  <div style={{width:42,height:42,borderRadius:'50%',border:'2px solid '+m.col,flexShrink:0,
+                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:17,fontWeight:700,
+                    color:m.col,background:'linear-gradient(135deg,'+m.col+'22,'+m.col+'55)'}}>
+                    {m.nm.slice(-1)}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                      <span style={{color:'#eef4ff',fontWeight:700,fontSize:15}}>{m.nm}</span>
+                      <span>{MDS[m.mood]}</span>
+                      {m.cm&&<span style={{fontSize:11,color:'#7a9ab8',flex:1,
+                        overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>「{m.cm}」</span>}
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{flex:1,height:5,background:'#1a2a3a',borderRadius:3}}>
+                        <div style={{height:'100%',width:acp2+'%',background:m.col,borderRadius:3}}/>
+                      </div>
+                      <span style={{fontSize:12,color:m.col,fontWeight:700}}>{acp2}%</span>
+                    </div>
+                    <div style={{fontSize:11,color:'#4a6a8a',marginTop:3}}>
+                      {m.items?m.items.length:0} 項工作
+                      📁 歸檔 {m.items?m.items.filter(function(it){return it.arc;}).length:0}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center',flexShrink:0}}>
+                    <div style={{fontSize:24,fontWeight:800,color:scCol(sc2)}}>{sc2.toFixed(1)}</div>
+                    <div style={{fontSize:10,color:'#4a6a8a'}}>/ 10 分</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 統計 */}
+        {tab==='stat' && (function(){
+          var allIt = ms.reduce(function(a,m){return a.concat(m.items||[]);}, []);
+          var actIt = allIt.filter(function(it){return !it.arc;});
+          var clearRate = actIt.length ? Math.round(actIt.filter(function(it){return it.cp===100;}).length/actIt.length*100) : 0;
+          var avgDfAll = actIt.length ? Math.round(actIt.reduce(function(a,it){return a+(it.df||3);},0)/actIt.length*10)/10 : 0;
+          var curYM = new Date().getFullYear()+'/'+String(new Date().getMonth()+1).padStart(2,'0');
+          var monthDone = ms.reduce(function(a,m){
+            return a+(m.items?m.items.filter(function(it){return it.arc&&it.arcAt&&it.arcAt.startsWith(curYM);}).length:0);
+          },0);
+          var stats = [
+            {lb:'本週工作清空率', val:clearRate+'%',         col:'#00d4ff', ic:'🧹'},
+            {lb:'目前工作難度平均', val:'★ '+avgDfAll,       col:'#ffd700', ic:'⚡'},
+            {lb:'本月完成工作數目', val:monthDone+' 項',     col:'#00ffaa', ic:'📁'},
+            {lb:'AI 考核平均分數', val:avgScore.toFixed(1)+' 分', col:'#b44dff', ic:'🤖'},
+          ];
+          return (
+          <div>
+            <div className="stat-grid">
+              {stats.map(function(s,i){
+                return (
+                  <div key={i} style={{background:'#070f18',border:'1px solid #1a2a3a',
+                    borderRadius:12,padding:'14px',textAlign:'center'}}>
+                    <div style={{fontSize:26,marginBottom:5}}>{s.ic}</div>
+                    <div style={{fontSize:20,fontWeight:800,color:s.col,marginBottom:4}}>{s.val}</div>
+                    <div style={{fontSize:11,color:'#4a6a8a'}}>{s.lb}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {ms.map(function(m){
+              const acp3 = (m.items&&m.items.length)
+                ? Math.round(m.items.reduce(function(a,it){return a+it.cp;},0)/m.items.length):0;
+              const sc3 = getScoreFor(m);
+              const base3 = baseScores[m.id]||5;
+              const tot3 = m.items?m.items.length:0;
+              const arc3 = m.items?m.items.filter(function(it){return it.arc;}).length:0;
+              const avgDf3 = tot3 ? Math.round(m.items.reduce(function(a,it){return a+(it.df||3);},0)/tot3*10)/10 : 0;
+              return (
+                <div key={m.id} style={{background:'#070f18',border:'1px solid #1a2a3a',
+                  borderRadius:12,padding:'14px 16px',marginBottom:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:12}}>
+                    <div style={{width:38,height:38,borderRadius:'50%',border:'2px solid '+m.col,flexShrink:0,
+                      display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700,
+                      color:m.col,background:'linear-gradient(135deg,'+m.col+'22,'+m.col+'55)'}}>
+                      {m.nm.slice(-1)}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                        <span style={{color:'#eef4ff',fontWeight:700,fontSize:14}}>{m.nm}</span>
+                        <span style={{fontSize:11,color:'#5a7a9a'}}>
+                          📦 {tot3}項　📁 {arc3}　★ 均難{avgDf3}
+                        </span>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{flex:1,height:6,background:'#1a2a3a',borderRadius:3}}>
+                          <div style={{height:'100%',width:acp3+'%',
+                            background:'linear-gradient(90deg,'+m.col+','+m.col+'aa)',
+                            borderRadius:3,transition:'width .6s'}}/>
+                        </div>
+                        <span style={{fontSize:12,color:m.col,fontWeight:700,minWidth:34}}>{acp3}%</span>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                      <Ring p={acp3} c={m.col} s={40}/>
+                      <div style={{textAlign:'center',minWidth:38}}>
+                        <div style={{fontSize:18,fontWeight:700,color:scCol(sc3)}}>{sc3.toFixed(1)}</div>
+                        <div style={{fontSize:9,color:'#4a6a8a'}}>基準{base3.toFixed(1)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* 分類分佈 */}
+                  {m.items && m.items.length > 0 && (
+                    <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap',paddingLeft:50}}>
+                      {['buy','exp','safe','rou','other'].map(function(ck){
+                        const cnt = m.items.filter(function(it){return (it.cat||'other')===ck;}).length;
+                        if (!cnt) return null;
+                        const c2 = CATS.filter(function(c){return c.k===ck;});
+                        const cObj = c2.length ? c2[0] : CATS[3];
+                        return (
+                          <span key={ck} style={{fontSize:11,padding:'2px 8px',borderRadius:10,
+                            background:cObj.bg,color:cObj.col,border:'1px solid '+cObj.col+'55'}}>
+                            {cObj.ic} {cObj.lb} ×{cnt}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
